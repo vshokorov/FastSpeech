@@ -7,7 +7,7 @@ import math
 import time
 import os
 
-import hparams
+from configs import get_config
 import audio
 
 from utils import process_text, pad_1D, pad_2D
@@ -16,7 +16,7 @@ from text import text_to_sequence
 from tqdm import tqdm
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+cfg = get_config()
 
 def get_data_to_buffer():
     buffer = list()
@@ -26,13 +26,13 @@ def get_data_to_buffer():
     for i in tqdm(range(len(text))):
 
         mel_gt_name = os.path.join(
-            hparams.mel_ground_truth, "ljspeech-mel-%05d.npy" % (i+1))
+            cfg.mel_ground_truth, "ljspeech-mel-%05d.npy" % (i+1))
         mel_gt_target = np.load(mel_gt_name)
         duration = np.load(os.path.join(
-            hparams.alignment_path, str(i)+".npy"))
+            cfg.alignment_path, str(i)+".npy"))
         character = text[i][0:len(text[i])-1]
         character = np.array(
-            text_to_sequence(character, hparams.text_cleaners))
+            text_to_sequence(character, cfg.text_cleaners))
 
         character = torch.from_numpy(character)
         duration = torch.from_numpy(duration)
@@ -104,14 +104,14 @@ def collate_fn_tensor(batch):
     len_arr = np.array([d["text"].size(0) for d in batch])
     index_arr = np.argsort(-len_arr)
     batchsize = len(batch)
-    real_batchsize = batchsize // hparams.batch_expand_size
+    real_batchsize = batchsize // cfg.batch_expand_size
 
     cut_list = list()
-    for i in range(hparams.batch_expand_size):
+    for i in range(cfg.batch_expand_size):
         cut_list.append(index_arr[i*real_batchsize:(i+1)*real_batchsize])
 
     output = list()
-    for i in range(hparams.batch_expand_size):
+    for i in range(cfg.batch_expand_size):
         output.append(reprocess_tensor(batch, cut_list[i]))
 
     return output

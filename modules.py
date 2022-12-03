@@ -8,11 +8,11 @@ import numpy as np
 import copy
 import math
 
-import hparams as hp
+from configs import get_config
 import utils
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+cfg = get_config()
 
 def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):
     ''' Sinusoid position encoding table '''
@@ -97,11 +97,11 @@ class DurationPredictor(nn.Module):
     def __init__(self):
         super(DurationPredictor, self).__init__()
 
-        self.input_size = hp.encoder_dim
-        self.filter_size = hp.duration_predictor_filter_size
-        self.kernel = hp.duration_predictor_kernel_size
-        self.conv_output_size = hp.duration_predictor_filter_size
-        self.dropout = hp.dropout
+        self.input_size = cfg.encoder_dim
+        self.filter_size = cfg.duration_predictor_filter_size
+        self.kernel = cfg.duration_predictor_kernel_size
+        self.conv_output_size = cfg.duration_predictor_filter_size
+        self.dropout = cfg.dropout
 
         self.conv_layer = nn.Sequential(OrderedDict([
             ("conv1d_1", Conv(self.input_size,

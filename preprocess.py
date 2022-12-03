@@ -4,18 +4,19 @@ import shutil
 import os
 
 from data import ljspeech
-import hparams as hp
+from configs import get_config
 
+cfg = get_config()
 
 def preprocess_ljspeech(filename):
     in_dir = filename
-    out_dir = hp.mel_ground_truth
+    out_dir = cfg.mel_ground_truth
     if not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
     metadata = ljspeech.build_from_path(in_dir, out_dir)
     write_metadata(metadata, out_dir)
 
-    shutil.move(os.path.join(hp.mel_ground_truth, "train.txt"),
+    shutil.move(os.path.join(cfg.mel_ground_truth, "train.txt"),
                 os.path.join("data", "train.txt"))
 
 

@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import hparams as hp
+from configs import get_config
 
 import transformer.Constants as Constants
 from transformer.Layers import FFTBlock, PreNet, PostNet, Linear
 
+cfg = get_config()
 
 def get_non_pad_mask(seq):
     assert seq.dim() == 2
@@ -50,16 +51,16 @@ class Encoder(nn.Module):
     ''' Encoder '''
 
     def __init__(self,
-                 n_src_vocab=hp.vocab_size,
-                 len_max_seq=hp.vocab_size,
-                 d_word_vec=hp.encoder_dim,
-                 n_layers=hp.encoder_n_layer,
-                 n_head=hp.encoder_head,
-                 d_k=hp.encoder_dim // hp.encoder_head,
-                 d_v=hp.encoder_dim // hp.encoder_head,
-                 d_model=hp.encoder_dim,
-                 d_inner=hp.encoder_conv1d_filter_size,
-                 dropout=hp.dropout):
+                 n_src_vocab=cfg.vocab_size,
+                 len_max_seq=cfg.vocab_size,
+                 d_word_vec=cfg.encoder_dim,
+                 n_layers=cfg.encoder_n_layer,
+                 n_head=cfg.encoder_head,
+                 d_k=cfg.encoder_dim // cfg.encoder_head,
+                 d_v=cfg.encoder_dim // cfg.encoder_head,
+                 d_model=cfg.encoder_dim,
+                 d_inner=cfg.encoder_conv1d_filter_size,
+                 dropout=cfg.dropout):
 
         super(Encoder, self).__init__()
 
@@ -102,14 +103,14 @@ class Decoder(nn.Module):
     """ Decoder """
 
     def __init__(self,
-                 len_max_seq=hp.max_seq_len,
-                 n_layers=hp.decoder_n_layer,
-                 n_head=hp.decoder_head,
-                 d_k=hp.decoder_dim // hp.decoder_head,
-                 d_v=hp.decoder_dim // hp.decoder_head,
-                 d_model=hp.decoder_dim,
-                 d_inner=hp.decoder_conv1d_filter_size,
-                 dropout=hp.dropout):
+                 len_max_seq=cfg.max_seq_len,
+                 n_layers=cfg.decoder_n_layer,
+                 n_head=cfg.decoder_head,
+                 d_k=cfg.decoder_dim // cfg.decoder_head,
+                 d_v=cfg.decoder_dim // cfg.decoder_head,
+                 d_model=cfg.decoder_dim,
+                 d_inner=cfg.decoder_conv1d_filter_size,
+                 dropout=cfg.dropout):
 
         super(Decoder, self).__init__()
 

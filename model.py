@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import hparams as hp
+from configs import get_config
 import utils
 
 from transformer.Models import Encoder, Decoder
@@ -9,7 +9,7 @@ from modules import LengthRegulator, CBHG
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+cfg = get_config()
 
 class FastSpeech(nn.Module):
     """ FastSpeech """
@@ -21,10 +21,10 @@ class FastSpeech(nn.Module):
         self.length_regulator = LengthRegulator()
         self.decoder = Decoder()
 
-        self.mel_linear = Linear(hp.decoder_dim, hp.num_mels)
-        self.postnet = CBHG(hp.num_mels, K=8,
-                            projections=[256, hp.num_mels])
-        self.last_linear = Linear(hp.num_mels * 2, hp.num_mels)
+        self.mel_linear = Linear(cfg.decoder_dim, cfg.num_mels)
+        self.postnet = CBHG(cfg.num_mels, K=8,
+                            projections=[256, cfg.num_mels])
+        self.last_linear = Linear(cfg.num_mels * 2, cfg.num_mels)
 
     def mask_tensor(self, mel_output, position, mel_max_length):
         lengths = torch.max(position, -1)[0]

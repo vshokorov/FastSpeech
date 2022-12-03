@@ -7,7 +7,7 @@ import time
 import shutil
 import os
 
-import hparams as hp
+import cfg as cfg
 import audio
 import utils
 import dataset
@@ -21,7 +21,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def get_DNN(num):
     checkpoint_path = "checkpoint_" + str(num) + ".pth.tar"
     model = nn.DataParallel(M.FastSpeech()).to(device)
-    model.load_state_dict(torch.load(os.path.join(hp.checkpoint_path,
+    model.load_state_dict(torch.load(os.path.join(cfg.checkpoint_path,
                                                   checkpoint_path))['model'])
     model.eval()
     return model
@@ -48,12 +48,12 @@ def get_data():
     test5 = "You can not improve your past, but you can improve your future. Once time is wasted, life is wasted."
     test6 = "Death comes to all, but great achievements raise a monument which shall endure until the sun grows old."
     data_list = list()
-    data_list.append(text.text_to_sequence(test1, hp.text_cleaners))
-    data_list.append(text.text_to_sequence(test2, hp.text_cleaners))
-    data_list.append(text.text_to_sequence(test3, hp.text_cleaners))
-    data_list.append(text.text_to_sequence(test4, hp.text_cleaners))
-    data_list.append(text.text_to_sequence(test5, hp.text_cleaners))
-    data_list.append(text.text_to_sequence(test6, hp.text_cleaners))
+    data_list.append(text.text_to_sequence(test1, cfg.text_cleaners))
+    data_list.append(text.text_to_sequence(test2, cfg.text_cleaners))
+    data_list.append(text.text_to_sequence(test3, cfg.text_cleaners))
+    data_list.append(text.text_to_sequence(test4, cfg.text_cleaners))
+    data_list.append(text.text_to_sequence(test5, cfg.text_cleaners))
+    data_list.append(text.text_to_sequence(test6, cfg.text_cleaners))
     return data_list
 
 

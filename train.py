@@ -14,13 +14,14 @@ from loss import DNNLoss
 from dataset import BufferDataset, DataLoader
 from dataset import get_data_to_buffer, collate_fn_tensor
 from optimizer import ScheduledOptim
-import hparams as hp
+from configs import get_config
 import utils
+import wandb
 
 
-def main(args):
+def main(cfg):
     # Get device
-    device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
+    device = torch.device('cuda'if torch.cuda.is_available() else 'cpu')
 
     # Define model
     print("Use FastSpeech")
@@ -37,39 +38,42 @@ def main(args):
                                  betas=(0.9, 0.98),
                                  eps=1e-9)
     scheduled_optim = ScheduledOptim(optimizer,
-                                     hp.decoder_dim,
-                                     hp.n_warm_up_step,
-                                     args.restore_step)
+                                     cfg.decoder_dim,
+                                     cfg.n_warm_up_step,
+                                     cfg.restore_step)
     fastspeech_loss = DNNLoss().to(device)
     print("Defined Optimizer and Loss Function.")
 
     # Load checkpoint if exists
     try:
         checkpoint = torch.load(os.path.join(
-            hp.checkpoint_path, 'checkpoint_%d.pth.tar' % args.restore_step))
+            cfg.checkpoint_path, 'checkpoint_%d.pth.tar' % cfg.restore_step))
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        print("\n---Model Restored at Step %d---\n" % args.restore_step)
+        print("\n---Model Restored at Step %d---\n" % cfg.restore_step)
     except:
         print("\n---Start New Training---\n")
-        if not os.path.exists(hp.checkpoint_path):
-            os.mkdir(hp.checkpoint_path)
+        if not os.path.exists(cfg.checkpoint_path):
+            os.mkdir(cfg.checkpoint_path)
 
     # Init logger
-    if not os.path.exists(hp.logger_path):
-        os.mkdir(hp.logger_path)
+    if not os.path.exists(cfg.logger_path):
+        os.mkdir(cfg.logger_path)
 
     # Get dataset
     dataset = BufferDataset(buffer)
 
     # Get Training Loader
     training_loader = DataLoader(dataset,
-                                 batch_size=hp.batch_expand_size * hp.batch_size,
+                                 batch_size=cfg.batch_expand_size * cfg.batch_size,
                                  shuffle=True,
                                  collate_fn=collate_fn_tensor,
                                  drop_last=True,
                                  num_workers=0)
-    total_step = hp.epochs * len(training_loader) * hp.batch_expand_size
+    total_step = cfg.epochs * len(training_loader) * cfg.batch_expand_size
+    
+    # wandb.init(project="FastSpeechStudy", entity="vshokorov")
+    # ...
 
     # Define Some Information
     Time = np.array([])
@@ -78,14 +82,14 @@ def main(args):
     # Training
     model = model.train()
 
-    for epoch in range(hp.epochs):
+    for epoch in range(cfg.epochs):
         for i, batchs in enumerate(training_loader):
             # real batch start here
             for j, db in enumerate(batchs):
                 start_time = time.perf_counter()
 
-                current_step = i * hp.batch_expand_size + j + args.restore_step + \
-                    epoch * len(training_loader) * hp.batch_expand_size + 1
+                current_step = i * cfg.batch_expand_size + j + cfg.restore_step + \
+                    epoch * len(training_loader) * cfg.batch_expand_size + 1
 
                 # Init
                 scheduled_optim.zero_grad()
@@ -136,21 +140,21 @@ def main(args):
 
                 # Clipping gradients to avoid gradient explosion
                 nn.utils.clip_grad_norm_(
-                    model.parameters(), hp.grad_clip_thresh)
+                    model.parameters(), cfg.grad_clip_thresh)
 
                 # Update weights
-                if args.frozen_learning_rate:
+                if cfg.frozen_learning_rate:
                     scheduled_optim.step_and_update_lr_frozen(
-                        args.learning_rate_frozen)
+                        cfg.learning_rate)
                 else:
                     scheduled_optim.step_and_update_lr()
 
                 # Print
-                if current_step % hp.log_step == 0:
+                if current_step % cfg.log_step == 0:
                     Now = time.perf_counter()
 
                     str1 = "Epoch [{}/{}], Step [{}/{}]:".format(
-                        epoch+1, hp.epochs, current_step, total_step)
+                        epoch+1, cfg.epochs, current_step, total_step)
                     str2 = "Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Duration Loss: {:.4f};".format(
                         m_l, m_p_l, d_l)
                     str3 = "Current Learning Rate is {:.6f}.".format(
@@ -170,14 +174,14 @@ def main(args):
                         f_logger.write(str4 + "\n")
                         f_logger.write("\n")
 
-                if current_step % hp.save_step == 0:
+                if current_step % cfg.save_step == 0:
                     torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(
-                    )}, os.path.join(hp.checkpoint_path, 'checkpoint_%d.pth.tar' % current_step))
+                    )}, os.path.join(cfg.checkpoint_path, 'checkpoint_%d.pth.tar' % current_step))
                     print("save model at step %d ..." % current_step)
 
                 end_time = time.perf_counter()
                 Time = np.append(Time, end_time - start_time)
-                if len(Time) == hp.clear_Time:
+                if len(Time) == cfg.clear_Time:
                     temp_value = np.mean(Time)
                     Time = np.delete(
                         Time, [i for i in range(len(Time))], axis=None)
@@ -186,8 +190,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("config", type=str, help="py config file")
     parser.add_argument('--restore_step', type=int, default=0)
-    parser.add_argument('--frozen_learning_rate', type=bool, default=False)
-    parser.add_argument("--learning_rate_frozen", type=float, default=1e-3)
     args = parser.parse_args()
-    main(args)
+
+    cfg = get_config(args.config)
+    cfg.restore_step = args.restore_step
+
+    main(cfg)
