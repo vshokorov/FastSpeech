@@ -114,3 +114,5 @@ mels
 alignments
 waveglow/pretrained_model
 wandb/*
+configs/*
+models/*

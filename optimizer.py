@@ -21,8 +21,7 @@ class ScheduledOptim():
 
     def get_learning_rate(self):
         learning_rate = 0.0
-        for param_group in self._optimizer.param_groups:
-            learning_rate = param_group['lr']
+        learning_rate = self._optimizer.param_groups[0]['lr']
 
         return learning_rate
 

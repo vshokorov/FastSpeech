@@ -21,7 +21,7 @@ import wandb
 
 def main(cfg):
     # Get device
-    device = torch.device('cuda'if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Define model
     print("Use FastSpeech")
@@ -33,28 +33,65 @@ def main(cfg):
     print("Load data to buffer")
     buffer = get_data_to_buffer()
 
+    for n, p in model.named_parameters():
+        if cfg.freeze_encoder and n.startswith('module.encoder'):
+            p.requires_grad = False
+            print('Freeze', n)
+        elif cfg.freeze_length_regulator and n.startswith('module.length_regulator'):
+            p.requires_grad = False
+            print('Freeze', n)
+        elif cfg.freeze_decoder and n.startswith('module.decoder'):
+            p.requires_grad = False
+            print('Freeze', n)
+        elif cfg.freeze_mel_linear and n.startswith('module.mel_linear'):
+            p.requires_grad = False
+            print('Freeze', n)
+        elif cfg.freeze_postnet and n.startswith('module.postnet'):
+            p.requires_grad = False
+            print('Freeze', n)
+
     # Optimizer and loss
-    optimizer = torch.optim.Adam(model.parameters(),
+    optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad],
                                  betas=(0.9, 0.98),
                                  eps=1e-9)
-    scheduled_optim = ScheduledOptim(optimizer,
-                                     cfg.decoder_dim,
-                                     cfg.n_warm_up_step,
-                                     cfg.restore_step)
+    # scheduled_optim = ScheduledOptim(optimizer,
+    #                                  cfg.decoder_dim,
+    #                                  cfg.n_warm_up_step,
+    #                                  cfg.restore_step)
     fastspeech_loss = DNNLoss().to(device)
     print("Defined Optimizer and Loss Function.")
+    
+    wandb.init(
+        project="FastSpeechStudy", 
+        entity="vetrov_disciples",
+        name=cfg.run_name,
+        # mode='offline',
+    )
+    wandb.config.update(cfg)
+    wandb.watch(model)
 
     # Load checkpoint if exists
+    checkpoint = {}
     try:
         checkpoint = torch.load(os.path.join(
-            cfg.checkpoint_path, 'checkpoint_%d.pth.tar' % cfg.restore_step))
+            cfg.init_weights, 'checkpoint_%d.pth.tar' % cfg.restore_step))
+    except:
+        print("\n---No checkpoint. Start New Training---\n")
+    
+    try:
         model.load_state_dict(checkpoint['model'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
         print("\n---Model Restored at Step %d---\n" % cfg.restore_step)
     except:
-        print("\n---Start New Training---\n")
-        if not os.path.exists(cfg.checkpoint_path):
-            os.mkdir(cfg.checkpoint_path)
+        print("\n---Error while loading model. Init new weights---\n")
+
+    try:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print("\n---Optimizer Restored at Step %d---\n" % cfg.restore_step)
+    except:
+        print("\n---Error while loading optimizer. Init new one---\n")
+
+    if not os.path.exists(cfg.checkpoint_path):
+        os.mkdir(cfg.checkpoint_path)
 
     # Init logger
     if not os.path.exists(cfg.logger_path):
@@ -69,12 +106,14 @@ def main(cfg):
                                  shuffle=True,
                                  collate_fn=collate_fn_tensor,
                                  drop_last=True,
-                                 num_workers=0)
+                                 num_workers=4)
     total_step = cfg.epochs * len(training_loader) * cfg.batch_expand_size
-    
-    # wandb.init(project="FastSpeechStudy", entity="vshokorov")
-    # ...
 
+    scheduled_optim = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        cfg.learning_rate,
+        total_step
+    )
     # Define Some Information
     Time = np.array([])
     Start = time.perf_counter()
@@ -92,7 +131,7 @@ def main(cfg):
                     epoch * len(training_loader) * cfg.batch_expand_size + 1
 
                 # Init
-                scheduled_optim.zero_grad()
+                optimizer.zero_grad()
 
                 # Get Data
                 character = db["text"].long().to(device)
@@ -110,12 +149,11 @@ def main(cfg):
                                                                                   length_target=duration)
 
                 # Cal Loss
-                mel_loss, mel_postnet_loss, duration_loss = fastspeech_loss(mel_output,
-                                                                            mel_postnet_output,
-                                                                            duration_predictor_output,
-                                                                            mel_target,
-                                                                            duration)
-                total_loss = mel_loss + mel_postnet_loss + duration_loss
+                total_loss, mel_loss, mel_postnet_loss, duration_loss = fastspeech_loss(mel_output,
+                                                                                        mel_postnet_output,
+                                                                                        duration_predictor_output,
+                                                                                        mel_target,
+                                                                                        duration)
 
                 # Logger
                 t_l = total_loss.item()
@@ -123,31 +161,32 @@ def main(cfg):
                 m_p_l = mel_postnet_loss.item()
                 d_l = duration_loss.item()
 
-                with open(os.path.join("logger", "total_loss.txt"), "a") as f_total_loss:
-                    f_total_loss.write(str(t_l)+"\n")
-
-                with open(os.path.join("logger", "mel_loss.txt"), "a") as f_mel_loss:
-                    f_mel_loss.write(str(m_l)+"\n")
-
-                with open(os.path.join("logger", "mel_postnet_loss.txt"), "a") as f_mel_postnet_loss:
-                    f_mel_postnet_loss.write(str(m_p_l)+"\n")
-
-                with open(os.path.join("logger", "duration_loss.txt"), "a") as f_d_loss:
-                    f_d_loss.write(str(d_l)+"\n")
-
                 # Backward
                 total_loss.backward()
 
                 # Clipping gradients to avoid gradient explosion
-                nn.utils.clip_grad_norm_(
+                clip_norm = nn.utils.clip_grad_norm_(
                     model.parameters(), cfg.grad_clip_thresh)
+                
+                wandb.log({
+                    "step": current_step,
+                    "total_loss": t_l,
+                    "mel_loss": m_l,
+                    "mel_postnet_loss": m_p_l,
+                    "duration_loss": d_l,
+                    # "lr": scheduled_optim.get_learning_rate(),
+                    "lr": scheduled_optim.get_last_lr()[0],
+                    "clip_norm": clip_norm
+                })
 
                 # Update weights
-                if cfg.frozen_learning_rate:
-                    scheduled_optim.step_and_update_lr_frozen(
-                        cfg.learning_rate)
-                else:
-                    scheduled_optim.step_and_update_lr()
+                # if cfg.frozen_learning_rate:
+                #     scheduled_optim.step_and_update_lr_frozen(
+                #         cfg.learning_rate)
+                # else:
+                #     scheduled_optim.step_and_update_lr()
+                optimizer.step()
+                scheduled_optim.step()
 
                 # Print
                 if current_step % cfg.log_step == 0:
@@ -158,7 +197,8 @@ def main(cfg):
                     str2 = "Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Duration Loss: {:.4f};".format(
                         m_l, m_p_l, d_l)
                     str3 = "Current Learning Rate is {:.6f}.".format(
-                        scheduled_optim.get_learning_rate())
+                        # scheduled_optim.get_learning_rate())
+                        scheduled_optim.get_last_lr()[0])
                     str4 = "Time Used: {:.3f}s, Estimated Time Remaining: {:.3f}s.".format(
                         (Now-Start), (total_step-current_step)*np.mean(Time))
 
@@ -191,10 +231,11 @@ def main(cfg):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=str, help="py config file")
-    parser.add_argument('--restore_step', type=int, default=0)
+    parser.add_argument('--restore_step', type=int, default=None)
     args = parser.parse_args()
 
     cfg = get_config(args.config)
-    cfg.restore_step = args.restore_step
+    if not args.restore_step is None:
+        cfg.restore_step = args.restore_step
 
     main(cfg)
